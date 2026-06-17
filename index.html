@@ -408,6 +408,10 @@ tr:hover td{background:var(--gray);}
     <div id="modalDesForm" style="display:none;">
       <p style="font-size:13px;color:var(--muted);font-weight:600;margin-bottom:1rem;">Choisis le ou les chiens a desinscrire :</p>
       <div id="chiensDesListe" style="margin-bottom:1rem;"></div>
+      <div class="fg">
+        <label>Raison de la desinscription</label>
+        <textarea id="raisonDes" rows="2" placeholder="Ex: maladie, vacances, imprevu..." style="width:100%;padding:10px 14px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-size:14px;font-family:var(--font);resize:vertical;"></textarea>
+      </div>
       <div class="alert-err" id="modalErrorDes"></div>
       <div class="modal-actions">
         <button class="btn-modal-cancel" id="btnMC2">Annuler</button>
@@ -433,7 +437,7 @@ const FBCFG = {
   messagingSenderId: "338841120942",
   appId: "1:338841120942:web:bf91c5aaa302bd3f0cfd3f"
 };
-const SHEET = "https://script.google.com/macros/s/AKfycbxzHCyPkcFqbVkX-NoAoiVOnvECerYHp-YIPeFPOxhEvcwuQ-GWSTLxVhb6I4FlJeusIA/exec";
+const SHEET = "https://script.google.com/macros/s/AKfycbzN2tECNAgevJQPbmJJAa93Vu0uzIRwi_f8PRmoSJiQfoVC4Qr234wYCjBIiEzYydVxtw/exec";
 const ADMINS = ["martinezlaetitia7@gmail.com","agility.ccv@gmail.com","blemartelot@yahoo.fr"];
 
 const fbapp = initializeApp(FBCFG);
@@ -854,6 +858,7 @@ function openDes(c){
   g("modalMeta").textContent=c.nom+" - "+fmtDate(parseDate(c.date))+" a "+hstr;
   g("modalInsForm").style.display="none"; g("modalDesForm").style.display="block";
   g("modalErrorDes").style.display="none";
+  g("raisonDes").value="";
   // Afficher les chiens inscrits avec cases a cocher
   const meIns=getInsForCours(c).filter(function(i){ return i.email===me.email||i.email===me.email+"|chien2"; });
   const liste=g("chiensDesListe"); liste.innerHTML="";
@@ -920,6 +925,12 @@ g("btnConfirm").onclick = async function(){
 
 g("btnDesinscrire").onclick = async function(){
   if(g("btnDesinscrire").disabled) return;
+  const raison=g("raisonDes").value.trim();
+  if(!raison){
+    g("modalErrorDes").textContent="Merci d indiquer la raison de ta desinscription.";
+    g("modalErrorDes").style.display="block";
+    return;
+  }
   g("btnDesinscrire").disabled=true;
   const err=g("modalErrorDes");
   err.style.display="none";
@@ -932,7 +943,7 @@ g("btnDesinscrire").onclick = async function(){
     const insRetire=allIns.find(function(x){ return x.coursId===curC.id&&x.email===emailVal; });
     if(insRetire) nomsRetires.push(insRetire.chien);
     allIns=allIns.filter(function(x){ return !(x.coursId===curC.id&&x.email===emailVal); });
-    try{ await postToSheet({action:"desinscription",coursId:curC.id,email:emailVal}); }catch(e){}
+    try{ await postToSheet({action:"desinscription",coursId:curC.id,email:emailVal,raison:raison,nom:me.displayName||me.email,chien:insRetire?insRetire.chien:""}); }catch(e){}
   }
   const ic=g("okIcon"); ic.className="ok-icon ok-orange"; ic.textContent="X";
   g("okTitle").textContent="Desinscription effectuee";
