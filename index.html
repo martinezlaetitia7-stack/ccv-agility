@@ -417,7 +417,7 @@ const FBCFG = {
   messagingSenderId: "338841120942",
   appId: "1:338841120942:web:bf91c5aaa302bd3f0cfd3f"
 };
-const SHEET = "https://script.google.com/macros/s/AKfycbzN2tECNAgevJQPbmJJAa93Vu0uzIRwi_f8PRmoSJiQfoVC4Qr234wYCjBIiEzYydVxtw/exec";
+const SHEET = "https://script.google.com/macros/s/AKfycbypnZMxAXXh1z0TOJkEmblOI5npFrcRPijXv0hHx59BQGVfLvQKDndrpueW6Hc-ymKhaA/exec";
 const ADMINS = ["martinezlaetitia7@gmail.com","agility.ccv@gmail.com","blemartelot@yahoo.fr"];
 
 const fbapp = initializeApp(FBCFG);
@@ -580,10 +580,8 @@ onAuthStateChanged(auth, async function(user){
     g("mainPage").style.display="block"; g("mainPage").classList.add("active");
     window.scrollTo(0,0);
     g("userEmail").textContent=user.displayName||user.email;
-    setTimeout(function(){
-      const p=loadProfil();
-      if(!p||!p.chien1){ openProfil(); }
-    }, 1000);
+    profilActuel = await fetchProfilDepuisSheet(user.email);
+    if(!profilActuel||!profilActuel.chien1){ openProfil(); }
     g("adminBadge").style.display=isAdm?"inline-block":"none";
     g("adminSection").classList.toggle("visible",isAdm);
     if(isAdm && g("btnToggleAdmin")){
@@ -916,14 +914,14 @@ if(g("btnToggleAdmin")) g("btnToggleAdmin").onclick = function(){
   renderCal();
   renderInscrits();
 };
-if(g("btnSaveProfil")) g("btnSaveProfil").onclick = function(){
-  const btn=g("btnSaveProfil"); if(btn.disabled) return; btn.disabled=true;
+if(g("btnSaveProfil")) g("btnSaveProfil").onclick = async function(){
+  const btn=g("btnSaveProfil"); if(btn.disabled) return; btn.disabled=true; btn.textContent="Enregistrement...";
   const prenom=g("profilPrenom").value.trim();
-  if(!prenom){ g("profilError").textContent="Merci d entrer ton prenom."; g("profilError").style.display="block"; return; }
+  if(!prenom){ g("profilError").textContent="Merci d entrer ton prenom."; g("profilError").style.display="block"; btn.disabled=false; btn.textContent="Enregistrer"; return; }
   const p={prenom:prenom, chien1:g("profilChien1").value.trim(), chien2:g("profilChien2").value.trim(), chien3:g("profilChien3").value.trim()};
-  saveProfil(p);
+  await saveProfil(p);
   g("profilOverlay").classList.remove("open");
-  btn.disabled=false;
+  btn.disabled=false; btn.textContent="Enregistrer";
   alert("Profil enregistre !");
 };
 
@@ -1001,11 +999,23 @@ async function loadInscriptions(){
   }catch(e){ allIns=[]; } 
 }
 
+let profilActuel = null;
+
 function loadProfil(){
-  try{ return JSON.parse(localStorage.getItem("ccv_profil_"+(window._me&&window._me.email||""))||"null"); }catch(e){ return null; }
+  return profilActuel;
 }
-function saveProfil(p){
-  try{ localStorage.setItem("ccv_profil_"+(window._me&&window._me.email||""), JSON.stringify(p)); }catch(e){}
+async function fetchProfilDepuisSheet(email){
+  try{
+    const data = await fetchJsonp(SHEET+"?type=profil&email="+encodeURIComponent(email));
+    if(data && (data.prenom||data.chien1||data.chien2||data.chien3)) return data;
+    return null;
+  }catch(e){ return null; }
+}
+async function saveProfil(p){
+  profilActuel = p;
+  try{
+    await postToSheet({action:"saveProfil", email:(window._me&&window._me.email)||"", prenom:p.prenom||"", chien1:p.chien1||"", chien2:p.chien2||"", chien3:p.chien3||""});
+  }catch(e){}
 }
 function getChiens(){
   const p=loadProfil();
