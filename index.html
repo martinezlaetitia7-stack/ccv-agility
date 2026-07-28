@@ -468,10 +468,7 @@ function fetchJsonp(url) {
     document.body.appendChild(script);
   });
 }
-    script.src = url + (url.indexOf("?")>-1?"&":"?") + "callback="+cb+"&t="+Date.now();
-    document.body.appendChild(script);
-  });
-}
+
 
 async function fetchGAS(url) {
   return fetchJsonp(url);
