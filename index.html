@@ -425,25 +425,49 @@ const auth = getAuth(fbapp);
 
 function fetchJsonp(url) {
   return new Promise(function(resolve, reject){
-    const cb = "cb_"+Date.now();
+    // Nom unique : Date.now() seul peut se repeter si deux appels partent dans la
+    // meme milliseconde (au chargement : cours + inscriptions + message).
+    const cb = "cb_"+Date.now()+"_"+Math.floor(Math.random()*100000);
     const script = document.createElement("script");
-    const timeout = setTimeout(function(){
-      reject(new Error("timeout"));
-      delete window[cb];
+    let fini = false;   // evite qu'une reponse tardive repasse dans le code
+
+    function retirerScript(){
       if(document.body.contains(script)) document.body.removeChild(script);
-    }, 10000);
+    }
+
+    const timeout = setTimeout(function(){
+      if(fini) return;
+      fini = true;
+      reject(new Error("timeout"));
+      retirerScript();
+      // On laisse une fonction vide : si la reponse arrive en retard, elle ne
+      // provoquera plus de "cb_xxx is not defined" dans la console.
+      window[cb] = function(){};
+      setTimeout(function(){ delete window[cb]; }, 60000);
+    }, 30000);   // 30 secondes au lieu de 10
+
     window[cb] = function(data){
+      if(fini) return;
+      fini = true;
       clearTimeout(timeout);
       resolve(data);
       delete window[cb];
-      if(document.body.contains(script)) document.body.removeChild(script);
+      retirerScript();
     };
+
     script.onerror = function(){
+      if(fini) return;
+      fini = true;
       clearTimeout(timeout);
       reject(new Error("erreur script"));
       delete window[cb];
-      if(document.body.contains(script)) document.body.removeChild(script);
+      retirerScript();
     };
+
+    script.src = url + (url.indexOf("?")>-1?"&":"?") + "callback="+cb+"&t="+Date.now();
+    document.body.appendChild(script);
+  });
+}
     script.src = url + (url.indexOf("?")>-1?"&":"?") + "callback="+cb+"&t="+Date.now();
     document.body.appendChild(script);
   });
@@ -467,27 +491,51 @@ async function postToSheet(data) {
 }
 
 async function loadCours(){
+  coursFiables = false;   // on repart toujours de "pas fiable"
   try{
     console.log("Debut loadCours...");
     const data = await fetchGAS(SHEET+"?type=cours");
     console.log("Reponse loadCours:", data ? data.length : 0, "elements");
+
     if(Array.isArray(data) && data.length>0){
       try{ localStorage.setItem("ccv_cours_cache", JSON.stringify(data)); }catch(e){}
+      coursFiables = true;   // SEUL endroit ou on autorise l'enregistrement
       return data;
     }
+
+    // Repli 1 : le cache du navigateur. Il peut etre perime -> on n'ecrit pas.
     const cache = localStorage.getItem("ccv_cours_cache");
     if(cache){ const c=JSON.parse(cache); if(c && c.length>0) return c; }
+
+    // Repli 2 : liste fabriquee de zero, sans inscriptions ni annulations.
     return getDefautCours();
-  }catch(e){ 
+
+  }catch(e){
     console.log("Erreur loadCours:", e.message);
     try{
       const cache = localStorage.getItem("ccv_cours_cache");
       if(cache){ const c=JSON.parse(cache); if(c && c.length>0) return c; }
     }catch(e2){}
-    return getDefautCours(); 
+    return getDefautCours();
   }
 }
 async function saveCours(c){
+  // GARDE-FOU : si les cours ne viennent pas du serveur, on refuse d'ecrire.
+  // Sans ca, une simple lenteur reseau peut remplacer tout le Sheet par une
+  // liste de secours -> perte des annulations et des cours ajoutes a la main.
+  if(!coursFiables){
+    alert("Les cours n'ont pas pu etre charges depuis le serveur.\n\n"
+        + "Recharge la page (Ctrl+F5) avant de modifier quoi que ce soit,\n"
+        + "sinon tu risques d'effacer le planning.");
+    return;
+  }
+
+  // Securite : on n'envoie jamais une liste vide
+  if(!Array.isArray(c) || c.length===0){
+    alert("Liste de cours vide : enregistrement annule.");
+    return;
+  }
+
   try{
     await postToSheet({action:"saveCours", cours:c});
   }catch(e){}
@@ -523,6 +571,9 @@ function getMondayFromDate(base, offsetWeeks){
 
 let calOffset=0, me=null, isAdm=false, allIns=[], curC=null;
 let cours = [];
+// true uniquement si les cours viennent VRAIMENT du serveur.
+// Reste a false si on utilise le cache ou la liste de secours.
+let coursFiables = false;
 
 function trad(c){
   const m={"auth/invalid-email":"Email invalide.","auth/user-not-found":"Aucun compte.","auth/wrong-password":"Mot de passe incorrect.","auth/email-already-in-use":"Email deja utilise.","auth/weak-password":"Mot de passe trop court.","auth/too-many-requests":"Trop de tentatives.","auth/invalid-credential":"Email ou mot de passe incorrect."};
